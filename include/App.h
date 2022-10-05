@@ -23,6 +23,8 @@ private:
 
     GLuint gl_texture = 0;
 
+    char current_image_path[255] = {0};
+
 public:
     App(u32 app_width, u32 app_height)
         : screen_width(app_width), screen_height(app_height) {}
@@ -32,14 +34,16 @@ public:
     void initImGui();
 
     void run();
+    bool handleInput();
 
     void update();
     void render();
 
     void destroy();
 
-    bool loadBMP(const char *path);
-    bool handleInput();
+    bool loadBMP(const char path[255]);
+    bool saveBMP();
+    void grayscaleBMP();
 };
 
 #endif // APP_H

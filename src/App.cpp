@@ -64,12 +64,7 @@ void App::initImGui()
 
 void App::run()
 {
-    const char img1_path[] = "image/img1.bmp";
     bool quit = false;
-
-    if (!loadBMP(img1_path)) {
-        printf("Failed to load image!\n");
-    }
 
     const u64 fps = 120 / 1000; // FPS in ms
     Uint64 elapsed = 0;
@@ -90,6 +85,25 @@ void App::run()
     }
 }
 
+bool App::handleInput()
+{
+    SDL_Event e;
+    while (SDL_PollEvent(&e)) {
+        ImGui_ImplSDL2_ProcessEvent(&e);
+
+        switch (e.type) {
+        case SDL_QUIT:
+            return true;
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    return false;
+}
+
 void App::update()
 {
     // Start the Dear ImGui frame
@@ -97,23 +111,61 @@ void App::update()
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
     
+    int win_width, win_height;
+    SDL_GetWindowSize(window, &win_width, &win_height);
+
     char image_path[255] = {0};
     float bar_height = 0.0;
-    if (ImGui::BeginMainMenuBar())
-    {
-        if (ImGui::BeginMenu("File"))
-        {
+    if (ImGui::BeginMainMenuBar()) {
+        bar_height = ImGui::GetWindowHeight();
+
+        if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open")) { /* Do stuff */ }
             if (ImGui::MenuItem("Save"))   { /* Do stuff */ }
-            if (ImGui::MenuItem("Close"))  { /* Do stuff */ }
+            if (ImGui::MenuItem("Close")) {
+                glDeleteTextures(1, &gl_texture);
+                image_surface = NULL;
+                current_image_path[0] = '\0';
+            }
             ImGui::EndMenu();
         }
+        
+        ImGui::Separator();
 
-        if (ImGui::InputText("##path_textbox", image_path, sizeof(image_path))) {
-            // change image
+        // Path/filename text
+        static const float max_path_w = win_width * 0.25;
+        std::string display_text;
+        if (current_image_path[0]) {
+            display_text = current_image_path;
+            while(ImGui::CalcTextSize(display_text.c_str()).x > max_path_w) {
+                display_text.pop_back();
+            }
+
+            if (display_text != current_image_path) {
+                display_text += "..";
+            }
+        } else {
+            display_text = "Enter image path: ";
         }
 
-        bar_height = ImGui::GetWindowHeight();
+        ImGui::Text("%s", display_text.c_str());
+        ImGui::Dummy(ImVec2(max_path_w -
+                     ImGui::CalcTextSize(display_text.c_str()).x, 0));
+
+        // ImGui::Separator();
+    
+
+        ImGui::PushItemWidth(win_width);
+        if (ImGui::InputText("##path_textbox", image_path, sizeof(image_path),
+            ImGuiInputTextFlags_EnterReturnsTrue))
+        {
+            if (!loadBMP(image_path)) {
+                printf("Unable to load image %s! SDL_Error: %s\n",
+                        image_path, SDL_GetError());
+            }
+        }
+        ImGui::PopItemWidth();
+
         ImGui::EndMainMenuBar();
     }
 
@@ -125,8 +177,6 @@ void App::update()
                                  ImGuiWindowFlags_NoSavedSettings       |
                                  ImGuiWindowFlags_NoBringToFrontOnFocus;
     
-    int win_width, win_height;
-    SDL_GetWindowSize(window, &win_width, &win_height);
 
     glViewport(0.0, 0.0, win_width * 0.75, win_height - bar_height);
 
@@ -136,39 +186,45 @@ void App::update()
     ImGui::Begin("ToolBar", nullptr, win_flags);
     {
         ImGui::Text("Check");
+        if (ImGui::Button("Grayscale image")) {
+            grayscaleBMP();
+        }
     }
     ImGui::End();
 }
 
 void App::render()
 {
-    glBindTexture(GL_TEXTURE_2D, gl_texture);
-    
-    int gl_texture_mode = GL_RGB;
-    if (image_surface->format->BytesPerPixel == 4) {
-        gl_texture_mode = GL_RGBA;
+    if (image_surface) {
+        glBindTexture(GL_TEXTURE_2D, gl_texture);
+        
+        int gl_texture_mode = GL_RGB;
+        if (image_surface->format->BytesPerPixel == 4) {
+            gl_texture_mode = GL_RGBA;
+        }
+         
+        glTexImage2D(GL_TEXTURE_2D, 0, gl_texture_mode,
+                    image_surface->w, image_surface->h, 0,
+                    gl_texture_mode, GL_UNSIGNED_BYTE,
+                    image_surface->pixels);
+         
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, gl_texture);
+
+        // Mapping texture
+        glBegin(GL_QUADS);
+            glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f,  1.0f, 1.0f); // top left
+            glTexCoord2f(1.0f, 0.0f); glVertex3f( 1.0f,  1.0f, 1.0f); // top right
+            glTexCoord2f(1.0f, 1.0f); glVertex3f( 1.0f, -1.0f, 1.0f); // bottom right
+            glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, -1.0f, 1.0f); // bootom left
+        glEnd();
+    } else {
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
     }
-     
-    glTexImage2D(GL_TEXTURE_2D, 0, gl_texture_mode,
-                image_surface->w, image_surface->h, 0,
-                gl_texture_mode, GL_UNSIGNED_BYTE,
-                image_surface->pixels);
-     
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glEnable(GL_TEXTURE_2D);
-    glBindTexture(GL_TEXTURE_2D, gl_texture);
-
-    // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    // glClear(GL_COLOR_BUFFER_BIT);
-
-    // Mapping texture
-    glBegin(GL_QUADS);
-        glTexCoord2f(0.0f, 0.0f); glVertex3f(-1.0f,  1.0f, 1.0f); // top left
-        glTexCoord2f(1.0f, 0.0f); glVertex3f( 1.0f,  1.0f, 1.0f); // top right
-        glTexCoord2f(1.0f, 1.0f); glVertex3f( 1.0f, -1.0f, 1.0f); // bottom right
-        glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, -1.0f, 1.0f); // bootom left
-    glEnd();
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -184,6 +240,7 @@ void App::destroy()
 
     glDeleteTextures(1, &gl_texture);
     SDL_GL_DeleteContext(gl_context);
+    
 
     SDL_FreeSurface(image_surface);
     image_surface = NULL;
@@ -196,10 +253,11 @@ void App::destroy()
 
 bool App::loadBMP(const char *path)
 {
+    strncpy(current_image_path, path, 255);
+
     SDL_Surface *temp = SDL_LoadBMP(path);
 
     if (!temp) {
-        printf("Unable to load image %s! SDL_Error: %s\n", path, SDL_GetError());
         return false;
     }
 
@@ -233,21 +291,7 @@ bool App::loadBMP(const char *path)
     return true;
 }
 
-bool App::handleInput()
+void App::grayscaleBMP()
 {
-    SDL_Event e;
-    while (SDL_PollEvent(&e)) {
-        ImGui_ImplSDL2_ProcessEvent(&e);
-
-        switch (e.type) {
-        case SDL_QUIT:
-            return true;
-            break;
-
-        default:
-            break;
-        }
-    }
-
-    return false;
+    
 }
