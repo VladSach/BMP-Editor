@@ -1,7 +1,13 @@
 #include "App.h"
 #include "SDL_opengl.h"
-#include <stdio.h>
+#include "imgui_impl_opengl3.h"
+#if defined(IMGUI_IMPL_OPENGL_ES2)
+#include <SDL_opengles2.h>
+#else
+#include <SDL_opengl.h>
+#endif
 
+#include <stdio.h>
 bool App::init(const char *title, Uint32 window_flags)
 {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -25,21 +31,117 @@ bool App::init(const char *title, Uint32 window_flags)
     }
 
     screen_surface = SDL_GetWindowSurface(window);
-    gui = new Gui(window);
-    gui->init();
+    initImGui();
 
     return true;
 }
 
+void App::initImGui()
+{
+    const char* glsl_version = "#version 450";
+
+    SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 24);
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
+    gl_context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, gl_context);
+    SDL_GL_SetSwapInterval(1); // Enable vsync
+
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    io = &ImGui::GetIO(); (void)io;
+    //io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+
+    // Setup Platform/Renderer backends
+    ImGui_ImplSDL2_InitForOpenGL(window, &gl_context);
+    ImGui_ImplOpenGL3_Init(glsl_version);
+}
+
+void App::run()
+{
+    const char img1_path[] = "image/img1.bmp";
+    bool quit = false;
+
+    if (!loadBMP(img1_path)) {
+        printf("Failed to load image!\n");
+    }
+
+    const u64 fps = 120 / 1000; // FPS in ms
+    Uint64 elapsed = 0;
+    Uint64 frame_time = 0;
+
+    while (!quit) {
+        elapsed = SDL_GetTicks64();
+    
+        quit = handleInput();
+    
+        update();
+        render();
+
+        frame_time = SDL_GetTicks64() - elapsed;
+        if (fps > frame_time) {
+            SDL_Delay(fps - frame_time);
+        }
+    }
+}
+
 void App::update()
 {
-    gui->update();
-    //SDL_BlitSurface(image_surface, NULL, screen_surface, NULL);
+    // Start the Dear ImGui frame
+    ImGui_ImplOpenGL3_NewFrame();
+    ImGui_ImplSDL2_NewFrame();
+    ImGui::NewFrame();
+    
+    char image_path[255] = {0};
+    float bar_height = 0.0;
+    if (ImGui::BeginMainMenuBar())
+    {
+        if (ImGui::BeginMenu("File"))
+        {
+            if (ImGui::MenuItem("Open")) { /* Do stuff */ }
+            if (ImGui::MenuItem("Save"))   { /* Do stuff */ }
+            if (ImGui::MenuItem("Close"))  { /* Do stuff */ }
+            ImGui::EndMenu();
+        }
+
+        if (ImGui::InputText("##path_textbox", image_path, sizeof(image_path))) {
+            // change image
+        }
+
+        bar_height = ImGui::GetWindowHeight();
+        ImGui::EndMainMenuBar();
+    }
+
+    ImGuiWindowFlags win_flags = ImGuiWindowFlags_NoMove                |
+                                 ImGuiWindowFlags_NoResize              |
+                                 ImGuiWindowFlags_NoCollapse            |
+                                 ImGuiWindowFlags_NoTitleBar            |
+                                 ImGuiWindowFlags_NoScrollbar           |
+                                 ImGuiWindowFlags_NoSavedSettings       |
+                                 ImGuiWindowFlags_NoBringToFrontOnFocus;
+    
+    int win_width, win_height;
+    SDL_GetWindowSize(window, &win_width, &win_height);
+
+    glViewport(0.0, 0.0, win_width * 0.75, win_height - bar_height);
+
+    ImGui::SetNextWindowSize(ImVec2(win_width * 0.25, (float)win_height - bar_height));
+    ImGui::SetNextWindowPos(ImVec2(win_width* 0.75, 0.0 + bar_height));
+
+    ImGui::Begin("ToolBar", nullptr, win_flags);
+    {
+        ImGui::Text("Check");
+    }
+    ImGui::End();
 }
 
 void App::render()
 {
-    glGenTextures(1, &gl_texture);
     glBindTexture(GL_TEXTURE_2D, gl_texture);
     
     int gl_texture_mode = GL_RGB;
@@ -54,16 +156,11 @@ void App::render()
      
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
     glEnable(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, gl_texture);
 
     // glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     // glClear(GL_COLOR_BUFFER_BIT);
-    
-    // int win_width, win_height;
-    // SDL_GetWindowSize(window, &win_width, &win_height);
-    // glViewport(0.0, 0.0, win_width * 0.75, win_height);
 
     // Mapping texture
     glBegin(GL_QUADS);
@@ -73,15 +170,20 @@ void App::render()
         glTexCoord2f(0.0f, 1.0f); glVertex3f(-1.0f, -1.0f, 1.0f); // bootom left
     glEnd();
 
-    gui->render();
+    ImGui::Render();
+    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
     SDL_GL_SwapWindow(window);
 }
 
-void App::shutdown()
+void App::destroy()
 {
-    glDeleteTextures(1, &gl_texture);
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
 
-    gui->cleanup();
+    glDeleteTextures(1, &gl_texture);
+    SDL_GL_DeleteContext(gl_context);
 
     SDL_FreeSurface(image_surface);
     image_surface = NULL;
@@ -126,6 +228,8 @@ bool App::loadBMP(const char *path)
     SDL_FreeSurface(temp);
     // Now surface is in RGB format!
 
+    glGenTextures(1, &gl_texture);
+    
     return true;
 }
 
