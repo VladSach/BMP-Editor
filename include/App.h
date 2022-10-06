@@ -43,7 +43,9 @@ public:
 
     bool loadBMP(const char path[255]);
     bool saveBMP();
+
     void grayscaleBMP();
+    void adjustBrightness(int brightness);
 };
 
 #endif // APP_H

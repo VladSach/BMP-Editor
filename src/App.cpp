@@ -70,6 +70,9 @@ void App::run()
     Uint64 elapsed = 0;
     Uint64 frame_time = 0;
 
+    // Debug
+    loadBMP("bmp_examples/road.bmp");
+
     while (!quit) {
         elapsed = SDL_GetTicks64();
     
@@ -121,7 +124,7 @@ void App::update()
 
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open")) { /* Do stuff */ }
-            if (ImGui::MenuItem("Save"))   { /* Do stuff */ }
+            if (ImGui::MenuItem("Save")) { saveBMP(); }
             if (ImGui::MenuItem("Close")) {
                 glDeleteTextures(1, &gl_texture);
                 image_surface = NULL;
@@ -183,12 +186,26 @@ void App::update()
     ImGui::SetNextWindowSize(ImVec2(win_width * 0.25, (float)win_height - bar_height));
     ImGui::SetNextWindowPos(ImVec2(win_width* 0.75, 0.0 + bar_height));
 
+    if (!current_image_path[0]) { return; }
     ImGui::Begin("ToolBar", nullptr, win_flags);
     {
-        ImGui::Text("Check");
+        float cur_win_width = ImGui::GetWindowWidth();
+        float text_indent = ImGui::CalcTextSize("ToolBar").x;
+
+        ImGui::SetCursorPosX((cur_win_width - text_indent) * 0.5);
+        ImGui::TextColored({0, 255, 0, 255}, "Tool Bar");
+
         if (ImGui::Button("Grayscale image")) {
             grayscaleBMP();
         }
+        
+        static int brightness = 0;
+        static int prev_brightness = 0;
+        if (ImGui::SliderInt("Brightness", &brightness, -30.f, 30.f)) {
+            adjustBrightness(brightness - prev_brightness);
+            prev_brightness = brightness;
+        }
+
     }
     ImGui::End();
 }
@@ -240,7 +257,6 @@ void App::destroy()
 
     glDeleteTextures(1, &gl_texture);
     SDL_GL_DeleteContext(gl_context);
-    
 
     SDL_FreeSurface(image_surface);
     image_surface = NULL;
@@ -291,7 +307,55 @@ bool App::loadBMP(const char *path)
     return true;
 }
 
+bool App::saveBMP()
+{
+
+}
+
 void App::grayscaleBMP()
 {
-    
+    image_surface = SDL_ConvertSurfaceFormat(image_surface, SDL_PIXELFORMAT_ARGB8888, 0);
+    Uint32 *pixels = (Uint32 *)image_surface->pixels;
+
+    Uint8 r = 0, g = 0, b = 0, v = 0;
+    for (int y = 0; y < image_surface->h; y++) {
+      for (int x = 0; x < image_surface->w; x++) {
+         Uint32 pixel = pixels[y * image_surface->w + x];
+
+         SDL_GetRGB(pixel, image_surface->format, &r, &g, &b);
+         v = 0.212671f * r + 0.715160f * g + 0.072169f * b;
+         pixel = SDL_MapRGB(image_surface->format, v, v, v);
+
+         pixels[y * image_surface->w + x] = pixel;
+      }
+    }
 }
+
+int truncate(int value)
+{
+    if (value < 0)   return 0;
+    if (value > 255) return 255;
+
+    return value;
+}
+
+void App::adjustBrightness(int brightness)
+{
+    Uint32 *pixels = (Uint32 *)image_surface->pixels;
+    Uint8 r = 0, g = 0, b = 0;
+
+    for (int y = 0; y < image_surface->h; y++) {
+      for (int x = 0; x < image_surface->w; x++) {
+         Uint32 pixel = pixels[y * image_surface->w + x];
+
+         SDL_GetRGB(pixel, image_surface->format, &r, &g, &b);
+         r = truncate(r + brightness);
+         g = truncate(g + brightness);
+         b = truncate(b + brightness);
+         pixel = SDL_MapRGB(image_surface->format, r, g, b);
+
+         pixels[y * image_surface->w + x] = pixel;
+      }
+    }
+}
+
