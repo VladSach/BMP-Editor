@@ -1,5 +1,6 @@
 #include "App.h"
 #include "SDL_opengl.h"
+#include "SDL_surface.h"
 #include "imgui_impl_opengl3.h"
 #if defined(IMGUI_IMPL_OPENGL_ES2)
 #include <SDL_opengles2.h>
@@ -124,7 +125,23 @@ void App::update()
 
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("Open")) { /* Do stuff */ }
-            if (ImGui::MenuItem("Save")) { saveBMP(); }
+            if (ImGui::MenuItem("Save")) {
+                char new_image_path[255];
+                
+                if (ImGui::BeginPopup("##saving_popup")) {
+                    ImGui::Text("TEST");
+
+                    if (ImGui::InputText("##save_path_textbox", new_image_path,
+                        sizeof(image_path), ImGuiInputTextFlags_EnterReturnsTrue))
+                    {
+                        if (!saveBMP(new_image_path)) {
+                            printf("Failed to save the image %s! SDL_Error: %s\n",
+                                    new_image_path, SDL_GetError());
+                        }
+                    }
+                    ImGui::EndPopup();
+                }
+            }
             if (ImGui::MenuItem("Close")) {
                 glDeleteTextures(1, &gl_texture);
                 image_surface = NULL;
@@ -163,7 +180,7 @@ void App::update()
             ImGuiInputTextFlags_EnterReturnsTrue))
         {
             if (!loadBMP(image_path)) {
-                printf("Unable to load image %s! SDL_Error: %s\n",
+                printf("Unable to load the image %s! SDL_Error: %s\n",
                         image_path, SDL_GetError());
             }
         }
@@ -307,9 +324,13 @@ bool App::loadBMP(const char *path)
     return true;
 }
 
-bool App::saveBMP()
+bool App::saveBMP(const char *path)
 {
+    if (!SDL_SaveBMP(image_surface, path)) {
+        return false;
+    }
 
+    return true;
 }
 
 void App::grayscaleBMP()

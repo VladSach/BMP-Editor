@@ -42,7 +42,7 @@ public:
     void destroy();
 
     bool loadBMP(const char path[255]);
-    bool saveBMP();
+    bool saveBMP(const char path[255]);
 
     void grayscaleBMP();
     void adjustBrightness(int brightness);
